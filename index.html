@@ -402,20 +402,26 @@ async function renderGame(game) {
   } else if (phase === 'playing') {
     showPanel('panel-playing');
     const word = bowl[0] || null;
-    $('pp-word').textContent = word || '(bowl empty)';
     $('pp-bowl').textContent = `${bowl.length} word${bowl.length!==1?'s':''} left`;
-    $('pp-giver-label').textContent = amGiver ? 'Your word to give:' : `${giverName} is giving clues…`;
 
     if (amGiver) {
+      // clue-giver sees the word and action buttons
+      $('pp-word-card').style.display = 'block';
+      $('pp-watching').style.display = 'none';
       $('pp-got').style.display = 'block';
       $('pp-skip').style.display = 'block';
-      $('pp-word').style.fontSize = 'clamp(1.8rem, 7vw, 2.8rem)';
+      $('pp-word').textContent = word || '(bowl empty)';
+      $('pp-giver-label').textContent = 'Your word to give:';
     } else {
+      // everyone else sees a watching screen — word is hidden
+      $('pp-word-card').style.display = 'none';
+      $('pp-watching').style.display = 'flex';
       $('pp-got').style.display = 'none';
       $('pp-skip').style.display = 'none';
+      $('pp-watching-text').textContent = `${giverName} is giving clues — start guessing!`;
     }
 
-    // timer
+    // timer visible to all
     if (game.timerStart) {
       updateTimer(game.timerStart, game.timerDuration || L.timerSecs, amGiver);
     }
@@ -866,8 +872,9 @@ input:focus { border-color:var(--green); }
 .word-card .wc-word { font-family:'Playfair Display',serif; font-size:clamp(1.8rem,7vw,2.6rem); font-weight:900; color:var(--ink); line-height:1.1; margin:8px 0 4px; }
 .word-card .wc-left { font-family:'DM Mono',monospace; font-size:.72rem; color:var(--gray); margin-top:6px; }
 .watching-card {
-  background:rgba(255,255,255,.06); border-radius:12px; padding:20px;
+  background:rgba(255,255,255,.06); border-radius:12px; padding:24px 20px;
   text-align:center; color:rgba(255,255,255,.5); font-size:.9rem; width:100%;
+  flex-direction:column; align-items:center; gap:8px;
 }
 .watching-big { font-size:2rem; margin-bottom:8px; }
 
@@ -1113,7 +1120,7 @@ input:focus { border-color:var(--green); }
     <div class="timer-num" id="pp-timer-num">60</div>
   </div>
 
-  <div class="word-card">
+  <div class="word-card" id="pp-word-card">
     <p class="wc-hint" id="pp-giver-label">Your word:</p>
     <p class="wc-word" id="pp-word">—</p>
     <p class="wc-left" id="pp-bowl">— words left</p>
