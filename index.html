@@ -366,7 +366,10 @@ async function renderGame(game) {
   const teamB = Object.values(players).filter(p => p.team==='B').map(p=>p.name);
 
   const giverName = getGiverName(game, teamA, teamB);
-  const amGiver = giverName === L.playerName;
+  // Use stored giverId when playing (most reliable), fall back to name match
+  const amGiver = game.phase === 'playing'
+    ? game.currentGiverId === L.playerId
+    : giverName === L.playerName;
   const currentTeam = game.currentTeam || 'A';
   const bowl = game.bowlLeft || [];
   const scores = game.scores || { A:[0,0,0], B:[0,0,0] };
@@ -395,7 +398,9 @@ async function renderGame(game) {
       $('pi-scores').style.display = 'block';
       renderScoreMini('pi-score-body', scores);
     } else { $('pi-scores').style.display = 'none'; }
-    $('pi-start-btn').textContent = amGiver ? 'Start My Turn →' : `Waiting for ${giverName}…`;
+    const carryOver = game.carryOverTime || 0;
+    const timerLabel = carryOver > 0 ? `Start My Turn (${carryOver}s remaining) →` : 'Start My Turn →';
+    $('pi-start-btn').textContent = amGiver ? timerLabel : `Waiting for ${giverName}…`;
     $('pi-start-btn').disabled = !amGiver;
     $('pi-start-btn').onclick = amGiver ? startTurn : null;
 
@@ -430,12 +435,26 @@ async function renderGame(game) {
     clearInterval(L.timerInterval);
     showPanel('panel-turn-end');
     const turnWords = game.turnWords || [];
-    renderTurnWords(turnWords, amGiver);
     const got = turnWords.filter(w=>w.got).length;
-    $('pte-heading').textContent = `${giverName} — ${got} word${got!==1?'s':''} guessed`;
-    $('pte-confirm-btn').textContent = amGiver ? 'Confirm & Next Turn →' : `Waiting for ${giverName} to confirm…`;
-    $('pte-confirm-btn').disabled = !amGiver;
-    $('pte-confirm-btn').onclick = amGiver ? confirmTurn : null;
+
+    if (amGiver) {
+      // Giver sees full word list to review and confirm
+      $('pte-word-list').style.display = 'block';
+      renderTurnWords(turnWords, true);
+      $('pte-heading').textContent = `You got ${got} word${got!==1?'s':''}`;
+      $('pte-subtext').style.display = 'block';
+      $('pte-confirm-btn').textContent = 'Confirm & Next Turn →';
+      $('pte-confirm-btn').disabled = false;
+      $('pte-confirm-btn').onclick = confirmTurn;
+    } else {
+      // Everyone else just sees a waiting screen — no words revealed
+      $('pte-word-list').style.display = 'none';
+      $('pte-subtext').style.display = 'none';
+      $('pte-heading').textContent = `${giverName} got ${got} word${got!==1?'s':''}`;
+      $('pte-confirm-btn').textContent = `Waiting for ${giverName} to confirm…`;
+      $('pte-confirm-btn').disabled = true;
+      $('pte-confirm-btn').onclick = null;
+    }
 
   } else if (phase === 'between_rounds') {
     clearInterval(L.timerInterval);
@@ -481,11 +500,15 @@ window.startTurn = async function() {
   const game = snap.val();
   if (!game) return;
 
+  const carryOver = game.carryOverTime || 0;
+  const duration = carryOver > 0 ? carryOver : L.timerSecs;
   await update(roomRef('game'), {
     phase: 'playing',
     timerStart: Date.now(),
-    timerDuration: L.timerSecs,
+    timerDuration: duration,
     turnWords: [],
+    currentGiverId: L.playerId,
+    carryOverTime: 0,  // clear it once used
   });
 }
 
@@ -499,7 +522,10 @@ window.gotIt = async function() {
   const turnWords = [...(game.turnWords || []), { word, got: true }];
 
   if (bowl.length === 0) {
-    await update(roomRef('game'), { bowlLeft: bowl, turnWords, phase: 'turn_end' });
+    // Bowl empty mid-turn — calculate remaining time to carry over
+    const elapsed = (Date.now() - (game.timerStart || Date.now())) / 1000;
+    const remaining = Math.max(0, Math.floor((game.timerDuration || 60) - elapsed));
+    await update(roomRef('game'), { bowlLeft: bowl, turnWords, phase: 'turn_end', carryOverTime: remaining });
     return;
   }
   await update(roomRef('game'), { bowlLeft: bowl, turnWords });
@@ -512,7 +538,13 @@ window.skipWord = async function() {
   if (!bowl.length) return;
 
   const word = bowl.shift();
-  bowl.push(word); // end of bowl
+  // Insert skipped word at a random position in the remaining bowl
+  // (not immediately back at front, not always at the very end)
+  const minPos = Math.min(2, bowl.length); // at least 2 words away if possible
+  const insertAt = bowl.length <= minPos
+    ? bowl.length
+    : minPos + Math.floor(Math.random() * (bowl.length - minPos + 1));
+  bowl.splice(insertAt, 0, word);
   const turnWords = [...(game.turnWords || []), { word, got: false }];
   await update(roomRef('game'), { bowlLeft: bowl, turnWords });
 }
@@ -544,7 +576,7 @@ async function timeUp() {
   const snap = await get(roomRef('game'));
   const game = snap.val();
   if (game.phase !== 'playing') return; // already ended
-  await update(roomRef('game'), { phase: 'turn_end' });
+  await update(roomRef('game'), { phase: 'turn_end', carryOverTime: 0 });
 }
 
 // ═══════════════════════════════════════════════════
@@ -621,11 +653,17 @@ window.confirmTurn = async function() {
     const nextIdx = nextTeam === 'A' ? teamATurnIdx : teamBTurnIdx;
     const nextGiver = teamMembers[nextIdx % teamMembers.length];
 
+    // If there's carry-over time (bowl emptied mid-turn), next giver gets the remainder
+    const carryOver = game.carryOverTime || 0;
+    // Reshuffle remaining bowl so skipped words don't pile up predictably at the end
+    const reshuffled = shuffle([...(game.bowlLeft || [])]);
     await update(roomRef('game'), {
       scores, phase: 'round_intro',
       currentTeam: nextTeam,
       teamATurnIdx, teamBTurnIdx,
       turnWords: [],
+      carryOverTime: carryOver,
+      bowlLeft: reshuffled,
     });
   }
 }
@@ -1142,9 +1180,9 @@ input:focus { border-color:var(--green); }
 <!-- PANEL: Turn End -->
 <div class="game-panel" id="panel-turn-end">
   <div class="turn-end-card">
-    <p class="label">Review</p>
+    <p class="label">Turn Over</p>
     <h2 style="margin-top:4px;" id="pte-heading">—</h2>
-    <p class="dimmed mt-8" style="font-size:.82rem;">Toggle any words that need adjusting, then confirm.</p>
+    <p class="dimmed mt-8" style="font-size:.82rem;" id="pte-subtext">Toggle any words that need adjusting, then confirm.</p>
     <div class="word-result-list mt-8" id="pte-word-list"></div>
   </div>
   <button class="btn btn-primary" id="pte-confirm-btn">Confirm →</button>
