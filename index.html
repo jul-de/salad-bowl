@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🥗 Salad Bowl</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+–cream: #F5F0E8;
+–paper: #EDE8DC;
+–ink: #1A1610;
+–green: #2D5016;
+–green-light: #4A7C2A;
+–red: #C1392B;
+–gold: #C8A84B;
+–warm-gray: #8B8070;
+–card-bg: #FDFAF4;
+}
+
+body {
+font-family: ‘DM Sans’, sans-serif;
+background: var(–cream);
+color: var(–ink);
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+/* ─── BACKGROUND TEXTURE ─── */
+body::before {
+content: ‘’;
+position: fixed; inset: 0;
+background-image:
+radial-gradient(ellipse at 20% 20%, rgba(45,80,22,0.06) 0%, transparent 60%),
+radial-gradient(ellipse at 80% 80%, rgba(193,57,43,0.05) 0%, transparent 60%);
+pointer-events: none; z-index: 0;
+}
+
+.screen { display: none; min-height: 100vh; position: relative; z-index: 1; }
+.screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+
+/* ─── TYPOGRAPHY ─── */
+h1 {
+font-family: ‘Playfair Display’, serif;
+font-size: clamp(2.8rem, 8vw, 5rem);
+font-weight: 900;
+color: var(–green);
+line-height: 1;
+letter-spacing: -2px;
+}
+h2 {
+font-family: ‘Playfair Display’, serif;
+font-size: clamp(1.6rem, 5vw, 2.4rem);
+font-weight: 700;
+color: var(–ink);
+line-height: 1.1;
+}
+.mono { font-family: ‘DM Mono’, monospace; }
+.label {
+font-size: 0.7rem;
+font-weight: 600;
+letter-spacing: 0.15em;
+text-transform: uppercase;
+color: var(–warm-gray);
+}
+
+/* ─── CARD ─── */
+.card {
+background: var(–card-bg);
+border: 1.5px solid rgba(0,0,0,0.08);
+border-radius: 16px;
+padding: 28px;
+box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04);
+width: 100%;
+max-width: 480px;
+}
+
+/* ─── BUTTONS ─── */
+.btn {
+display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+padding: 14px 28px;
+border-radius: 10px;
+border: none;
+font-family: ‘DM Sans’, sans-serif;
+font-size: 1rem;
+font-weight: 600;
+cursor: pointer;
+transition: all 0.15s ease;
+text-decoration: none;
+width: 100%;
+}
+.btn-primary {
+background: var(–green);
+color: white;
+}
+.btn-primary:hover { background: var(–green-light); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+.btn-secondary {
+background: transparent;
+color: var(–ink);
+border: 1.5px solid rgba(0,0,0,0.15);
+}
+.btn-secondary:hover { background: rgba(0,0,0,0.04); }
+.btn-danger {
+background: var(–red);
+color: white;
+}
+.btn-danger:hover { opacity: 0.9; }
+.btn-gold {
+background: var(–gold);
+color: var(–ink);
+}
+.btn-gold:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-sm { padding: 8px 16px; font-size: 0.85rem; width: auto; }
+
+/* ─── INPUT ─── */
+input[type=text], input[type=number] {
+width: 100%;
+padding: 12px 14px;
+border: 1.5px solid rgba(0,0,0,0.12);
+border-radius: 8px;
+font-family: ‘DM Sans’, sans-serif;
+font-size: 1rem;
+background: white;
+color: var(–ink);
+outline: none;
+transition: border-color 0.15s;
+}
+input:focus { border-color: var(–green); }
+
+/* ─── SCREEN 1: HOME ─── */
+#screen-home .hero { text-align: center; margin-bottom: 32px; }
+#screen-home .emoji { font-size: 3.5rem; display: block; margin-bottom: 12px; }
+#screen-home .tagline { color: var(–warm-gray); margin-top: 8px; font-size: 0.95rem; }
+
+/* ─── SCREEN 2: SETUP ─── */
+.player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+.player-badge {
+padding: 10px 12px;
+border-radius: 8px;
+background: var(–paper);
+border: 1.5px solid transparent;
+cursor: pointer;
+transition: all 0.15s;
+text-align: center;
+font-weight: 500;
+font-size: 0.9rem;
+}
+.player-badge.active { border-color: var(–green); background: rgba(45,80,22,0.08); color: var(–green); }
+
+/* ─── SCREEN 3: SUBMIT WORDS ─── */
+.words-container { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+.word-row { display: flex; gap: 8px; align-items: center; }
+.word-row input { flex: 1; }
+.word-num { font-family: ‘DM Mono’, monospace; font-size: 0.8rem; color: var(–warm-gray); min-width: 20px; }
+.remove-word {
+background: none; border: none; cursor: pointer;
+color: var(–warm-gray); font-size: 1.1rem; padding: 4px;
+transition: color 0.15s;
+}
+.remove-word:hover { color: var(–red); }
+
+.progress-bar {
+width: 100%;
+height: 6px;
+background: var(–paper);
+border-radius: 10px;
+overflow: hidden;
+margin: 12px 0;
+}
+.progress-fill {
+height: 100%; background: var(–green);
+border-radius: 10px;
+transition: width 0.4s ease;
+}
+
+/* ─── SCREEN 4: TEAMS ─── */
+.team-card {
+padding: 16px;
+border-radius: 10px;
+margin: 8px 0;
+}
+.team-a { background: rgba(45,80,22,0.08); border: 1.5px solid rgba(45,80,22,0.2); }
+.team-b { background: rgba(193,57,43,0.08); border: 1.5px solid rgba(193,57,43,0.2); }
+.team-label-a { color: var(–green); }
+.team-label-b { color: var(–red); }
+
+/* ─── SCREEN 5: ROUND INTRO ─── */
+.round-badge {
+display: inline-block;
+padding: 6px 16px;
+border-radius: 99px;
+background: var(–green);
+color: white;
+font-size: 0.8rem;
+font-weight: 600;
+letter-spacing: 0.1em;
+text-transform: uppercase;
+margin-bottom: 16px;
+}
+.round-icon { font-size: 3rem; margin: 16px 0; }
+.round-desc {
+background: var(–paper);
+border-radius: 10px;
+padding: 14px 16px;
+font-size: 0.9rem;
+line-height: 1.5;
+color: var(–ink);
+margin: 12px 0;
+}
+
+/* ─── SCREEN 6: PLAYING ─── */
+#screen-play { background: var(–ink); }
+#screen-play .screen-inner {
+display: flex; flex-direction: column; align-items: center;
+justify-content: center; gap: 20px;
+width: 100%; max-width: 480px; padding: 24px;
+min-height: 100vh;
+}
+
+.timer-ring {
+position: relative;
+width: 110px; height: 110px;
+}
+.timer-ring svg { transform: rotate(-90deg); }
+.timer-ring circle { fill: none; }
+.timer-ring .bg { stroke: rgba(255,255,255,0.1); stroke-width: 6; }
+.timer-ring .fg { stroke: var(–gold); stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+.timer-num {
+position: absolute; inset: 0;
+display: flex; align-items: center; justify-content: center;
+font-family: ‘DM Mono’, monospace;
+font-size: 2rem; font-weight: 500;
+color: white;
+}
+
+.word-card {
+background: var(–card-bg);
+border-radius: 20px;
+padding: 36px 28px;
+text-align: center;
+width: 100%;
+box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+}
+.word-card .the-word {
+font-family: ‘Playfair Display’, serif;
+font-size: clamp(1.8rem, 7vw, 2.8rem);
+font-weight: 900;
+color: var(–ink);
+line-height: 1.1;
+margin: 8px 0 4px;
+}
+.word-card .words-left {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.75rem;
+color: var(–warm-gray);
+margin-top: 8px;
+}
+
+.play-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+.score-bar {
+display: flex; align-items: center; justify-content: space-between;
+width: 100%; padding: 10px 16px;
+background: rgba(255,255,255,0.06);
+border-radius: 10px;
+}
+.score-item { text-align: center; }
+.score-item .s-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.4); }
+.score-item .s-val { font-family: ‘DM Mono’, monospace; font-size: 1.3rem; color: white; font-weight: 500; }
+.score-item .s-val.green { color: var(–gold); }
+.score-divider { width: 1px; height: 30px; background: rgba(255,255,255,0.1); }
+
+.whose-turn {
+font-size: 0.8rem; color: rgba(255,255,255,0.5);
+text-align: center; letter-spacing: 0.05em;
+}
+.whose-turn strong { color: rgba(255,255,255,0.85); }
+
+/* ─── SCREEN 7: END OF TURN ─── */
+.word-result-list { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; max-height: 300px; overflow-y: auto; }
+.word-result {
+display: flex; align-items: center; gap: 10px;
+padding: 10px 12px;
+border-radius: 8px;
+background: var(–paper);
+font-size: 0.9rem;
+}
+.word-result .wr-word { flex: 1; font-weight: 500; }
+.word-result .wr-toggle {
+background: none; border: 1.5px solid rgba(0,0,0,0.15);
+border-radius: 6px; padding: 4px 10px; cursor: pointer;
+font-size: 0.75rem; font-weight: 600; transition: all 0.15s;
+}
+.word-result.got .wr-toggle { background: rgba(45,80,22,0.12); border-color: var(–green); color: var(–green); }
+.word-result.skip .wr-toggle { background: rgba(139,128,112,0.12); border-color: var(–warm-gray); color: var(–warm-gray); }
+
+/* ─── SCREEN 8: SCOREBOARD ─── */
+.score-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.score-table th { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(–warm-gray); padding: 6px 8px; text-align: left; }
+.score-table td { padding: 10px 8px; border-top: 1px solid rgba(0,0,0,0.06); font-size: 0.95rem; }
+.score-table td.pts { font-family: ‘DM Mono’, monospace; font-weight: 500; font-size: 1.1rem; }
+.score-table tr.leader td { color: var(–green); }
+
+/* ─── SCREEN 9: GAME OVER ─── */
+.winner-banner {
+text-align: center; padding: 28px;
+background: linear-gradient(135deg, var(–green), var(–green-light));
+border-radius: 16px; color: white; margin: 16px 0;
+}
+.winner-banner .trophy { font-size: 3rem; }
+.winner-banner h2 { color: white; margin-top: 8px; }
+
+/* ─── UTILS ─── */
+.gap-8 { display: flex; flex-direction: column; gap: 8px; }
+.gap-12 { display: flex; flex-direction: column; gap: 12px; }
+.gap-16 { display: flex; flex-direction: column; gap: 16px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.text-center { text-align: center; }
+.dimmed { color: var(–warm-gray); font-size: 0.88rem; }
+
+.pill {
+display: inline-block; padding: 3px 10px;
+border-radius: 99px; font-size: 0.75rem; font-weight: 600;
+}
+.pill-green { background: rgba(45,80,22,0.1); color: var(–green); }
+.pill-red { background: rgba(193,57,43,0.1); color: var(–red); }
+
+/* ─── ANIMATIONS ─── */
+@keyframes pop { 0%{transform:scale(0.92);opacity:0} 100%{transform:scale(1);opacity:1} }
+@keyframes fadeUp { 0%{transform:translateY(16px);opacity:0} 100%{transform:translateY(0);opacity:1} }
+.screen.active > * { animation: fadeUp 0.35s ease both; }
+.word-card { animation: pop 0.25s ease both; }
+
+@keyframes pulse-red { 0%,100%{stroke:var(–red)} 50%{stroke:#ff6b5b} }
+.timer-low .fg { animation: pulse-red 0.8s infinite; stroke: var(–red) !important; }
+
+.spinner {
+width: 20px; height: 20px;
+border: 2.5px solid rgba(255,255,255,0.3);
+border-top-color: white;
+border-radius: 50%;
+animation: spin 0.8s linear infinite;
+display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 10px; }
+</style>
+
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     SCREEN 1 — HOME
+══════════════════════════════════════ -->
+
+<div id="screen-home" class="screen active">
+  <div class="hero">
+    <span class="emoji">🥗</span>
+    <h1>Salad Bowl</h1>
+    <p class="tagline">3 rounds. 1 bowl. Pure chaos.</p>
+  </div>
+  <div class="card gap-16">
+    <div class="gap-8">
+      <p class="label">Players</p>
+      <div class="player-grid" id="player-count-grid">
+        <div class="player-badge active" data-n="4">4 players</div>
+        <div class="player-badge" data-n="6">6 players</div>
+        <div class="player-badge" data-n="8">8 players</div>
+        <div class="player-badge" data-n="custom">Custom…</div>
+      </div>
+      <input type="number" id="custom-count" min="3" max="12" placeholder="How many players?" style="display:none; margin-top:6px;">
+    </div>
+    <div class="gap-8">
+      <p class="label">Words per person</p>
+      <div class="player-grid" id="words-per-person-grid">
+        <div class="player-badge" data-w="3">3 words</div>
+        <div class="player-badge active" data-w="5">5 words</div>
+        <div class="player-badge" data-w="7">7 words</div>
+        <div class="player-badge" data-w="custom">Custom…</div>
+      </div>
+      <input type="number" id="custom-words" min="1" max="20" placeholder="Words per person?" style="display:none; margin-top:6px;">
+    </div>
+    <div class="gap-8">
+      <p class="label">Timer (seconds)</p>
+      <div class="player-grid" id="timer-grid">
+        <div class="player-badge" data-t="30">30s</div>
+        <div class="player-badge active" data-t="60">60s</div>
+        <div class="player-badge" data-t="90">90s</div>
+        <div class="player-badge" data-t="custom">Custom…</div>
+      </div>
+      <input type="number" id="custom-timer" min="10" max="300" placeholder="Seconds?" style="display:none; margin-top:6px;">
+    </div>
+    <button class="btn btn-primary" onclick="goToSetup()">Set Up Players →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 2 — PLAYER NAMES
+══════════════════════════════════════ -->
+
+<div id="screen-setup" class="screen">
+  <div class="card gap-16" style="max-width:480px;width:100%;">
+    <div>
+      <p class="label">Player Names</p>
+      <h2 style="margin-top:4px;">Who's playing?</h2>
+    </div>
+    <div id="name-inputs" class="gap-8"></div>
+    <div class="gap-8 mt-8">
+      <p class="label">Teams</p>
+      <p class="dimmed">Players alternate teams (1 → A, 2 → B, 3 → A…) or you can shuffle below.</p>
+      <button class="btn btn-secondary" onclick="shufflePlayers()">🔀 Shuffle order</button>
+    </div>
+    <button class="btn btn-primary" onclick="goToWords()">Next: Enter Words →</button>
+    <button class="btn btn-secondary" onclick="goTo('screen-home')">← Back</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 3 — WORD SUBMISSION
+══════════════════════════════════════ -->
+
+<div id="screen-words" class="screen">
+  <div class="card gap-16" style="max-width:480px;width:100%;">
+    <div>
+      <p class="label" id="words-player-label">Player 1 of 4</p>
+      <h2 id="words-player-name">Player 1</h2>
+      <div class="progress-bar mt-8">
+        <div class="progress-fill" id="words-progress"></div>
+      </div>
+      <p class="dimmed" style="margin-top:6px;" id="words-instruction">Write <strong id="words-count-label">5</strong> words or phrases — anything! People, places, movies, objects, phrases.</p>
+    </div>
+    <div class="words-container" id="words-inputs"></div>
+    <button class="btn btn-primary" onclick="submitWords()">Submit Words →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 4 — TEAMS PREVIEW
+══════════════════════════════════════ -->
+
+<div id="screen-teams" class="screen">
+  <div class="card gap-16" style="max-width:480px;width:100%;">
+    <div class="text-center">
+      <p class="label">All words are in the bowl</p>
+      <h2 style="margin-top:4px;">🥗 <span id="bowl-count">20</span> slips ready</h2>
+    </div>
+    <div>
+      <div class="team-card team-a">
+        <p class="label team-label-a">Team A 🟢</p>
+        <p id="team-a-names" style="margin-top:6px; font-weight:500;"></p>
+      </div>
+      <div class="team-card team-b">
+        <p class="label team-label-b">Team B 🔴</p>
+        <p id="team-b-names" style="margin-top:6px; font-weight:500;"></p>
+      </div>
+    </div>
+    <p class="dimmed text-center">Each team takes turns. The clue-giver rotates within the team each turn.</p>
+    <button class="btn btn-primary" onclick="goToRoundIntro()">Start Round 1 →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 5 — ROUND INTRO
+══════════════════════════════════════ -->
+
+<div id="screen-round-intro" class="screen">
+  <div class="card gap-16 text-center" style="max-width:480px;width:100%;">
+    <div>
+      <div class="round-badge" id="ri-round-badge">Round 1 of 3</div>
+      <h2 id="ri-round-name">Describe It</h2>
+      <div class="round-icon" id="ri-round-icon">💬</div>
+      <div class="round-desc" id="ri-round-desc">Say anything you want except the word itself. Use descriptions, stories, sounds — whatever works!</div>
+    </div>
+    <div style="background:var(--paper);border-radius:10px;padding:14px 16px;">
+      <p class="label">Going first</p>
+      <p style="margin-top:6px;font-weight:600;font-size:1.05rem;" id="ri-first-up"></p>
+      <p class="dimmed" style="margin-top:2px;" id="ri-first-team"></p>
+    </div>
+    <div id="ri-scores" style="display:none;">
+      <p class="label" style="margin-bottom:8px;">Scores after last round</p>
+      <div id="ri-score-table"></div>
+    </div>
+    <button class="btn btn-primary" id="ri-btn" onclick="startTurn()">Start Turn →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 6 — PLAYING
+══════════════════════════════════════ -->
+
+<div id="screen-play" class="screen">
+  <div class="screen-inner">
+    <div class="score-bar">
+      <div class="score-item">
+        <div class="s-label">Team A 🟢</div>
+        <div class="s-val green" id="play-score-a">0</div>
+      </div>
+      <div class="score-divider"></div>
+      <div class="score-item">
+        <div class="s-label">Bowl</div>
+        <div class="s-val" id="play-bowl-count">—</div>
+      </div>
+      <div class="score-divider"></div>
+      <div class="score-item">
+        <div class="s-label">Team B 🔴</div>
+        <div class="s-val" id="play-score-b">0</div>
+      </div>
+    </div>
+
+```
+<div class="whose-turn" id="play-whose-turn"></div>
+
+<div class="timer-ring" id="timer-ring">
+  <svg width="110" height="110">
+    <circle class="bg" cx="55" cy="55" r="48"/>
+    <circle class="fg" id="timer-circle" cx="55" cy="55" r="48"
+      stroke-dasharray="301.6" stroke-dashoffset="0"/>
+  </svg>
+  <div class="timer-num" id="timer-display">60</div>
+</div>
+
+<div id="word-display" class="word-card">
+  <p class="label" id="round-hint-label">Round 1 · Describe It</p>
+  <p class="the-word" id="current-word">—</p>
+  <p class="words-left" id="words-left-count"></p>
+</div>
+
+<div class="play-actions">
+  <button class="btn btn-gold" onclick="gotIt()" id="btn-got">✓ Got it!</button>
+  <button class="btn btn-secondary" style="color:white;border-color:rgba(255,255,255,0.2);background:rgba(255,255,255,0.06);" onclick="skipWord()" id="btn-skip">↷ Skip</button>
+</div>
+```
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 7 — END OF TURN
+══════════════════════════════════════ -->
+
+<div id="screen-turn-end" class="screen">
+  <div class="card gap-16" style="max-width:480px;width:100%;">
+    <div>
+      <p class="label" id="te-label">Turn over</p>
+      <h2 id="te-heading">Review Words</h2>
+      <p class="dimmed mt-8" id="te-subtext"></p>
+    </div>
+    <div>
+      <p class="label" style="margin-bottom:8px;">Words this turn</p>
+      <div class="word-result-list" id="turn-word-list"></div>
+    </div>
+    <div style="background:var(--paper);border-radius:10px;padding:12px 14px;">
+      <p class="label">This turn</p>
+      <p style="margin-top:4px;" id="te-summary"></p>
+    </div>
+    <button class="btn btn-primary" id="te-next-btn" onclick="endTurn()">Next Turn →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 8 — BETWEEN ROUNDS
+══════════════════════════════════════ -->
+
+<div id="screen-between-rounds" class="screen">
+  <div class="card gap-16 text-center" style="max-width:480px;width:100%;">
+    <div>
+      <p class="label" id="br-label">Round complete</p>
+      <h2 id="br-heading">🎉 Round 1 Done!</h2>
+    </div>
+    <table class="score-table">
+      <thead>
+        <tr>
+          <th>Team</th>
+          <th>R1</th>
+          <th>R2</th>
+          <th>R3</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody id="br-score-table"></tbody>
+    </table>
+    <p class="dimmed">🥗 All <span id="br-word-count">20</span> words go back in the bowl.</p>
+    <button class="btn btn-primary" id="br-next-btn" onclick="goToRoundIntro()">Next Round →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SCREEN 9 — GAME OVER
+══════════════════════════════════════ -->
+
+<div id="screen-gameover" class="screen">
+  <div class="card gap-16" style="max-width:480px;width:100%;">
+    <div class="winner-banner" id="winner-banner">
+      <div class="trophy">🏆</div>
+      <h2 id="winner-text">Team A Wins!</h2>
+      <p style="margin-top:4px;opacity:0.8;" id="winner-sub"></p>
+    </div>
+    <table class="score-table">
+      <thead>
+        <tr><th>Team</th><th>R1</th><th>R2</th><th>R3</th><th>Total</th></tr>
+      </thead>
+      <tbody id="go-score-table"></tbody>
+    </table>
+    <button class="btn btn-primary" onclick="restartGame()">🥗 New Game</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+const ROUNDS = [
+  { name: "Describe It", icon: "💬", rule: "Say anything except the word itself. No pass limits!" },
+  { name: "Taboo-Style", icon: "🤐", rule: "Only ONE word as your clue. No gestures, no sounds!" },
+  { name: "Charades", icon: "🎭", rule: "Mime only — no sounds, no mouthing. Pure acting!" }
+];
+
+let G = {};
+
+function initState() {
+  G = {
+    numPlayers: 4,
+    wordsPerPerson: 5,
+    timerSecs: 60,
+    playerNames: [],
+    teamA: [], teamB: [],
+    bowl: [],        // full shuffled word list for round
+    bowlLeft: [],    // remaining in current round
+    currentRound: 0, // 0-indexed
+    scores: { A: [0,0,0], B: [0,0,0] },
+    // turn state
+    currentTeam: 'A',  // 'A' or 'B'
+    teamATurnIdx: 0,   // which player in teamA is clue-giver
+    teamBTurnIdx: 0,
+    timerInterval: null,
+    timerLeft: 60,
+    turnWords: [],  // {word, got: bool}
+    // word submission
+    currentSubmitter: 0,
+    allWords: [],
+  };
+}
+initState();
+
+// ═══════════════════════════════════════════════════
+//  NAV
+// ═══════════════════════════════════════════════════
+function goTo(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════
+//  SCREEN 1 — HOME
+// ═══════════════════════════════════════════════════
+document.getElementById('player-count-grid').addEventListener('click', e => {
+  const b = e.target.closest('[data-n]'); if (!b) return;
+  document.querySelectorAll('#player-count-grid .player-badge').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  const ci = document.getElementById('custom-count');
+  ci.style.display = b.dataset.n === 'custom' ? 'block' : 'none';
+});
+
+document.getElementById('words-per-person-grid').addEventListener('click', e => {
+  const b = e.target.closest('[data-w]'); if (!b) return;
+  document.querySelectorAll('#words-per-person-grid .player-badge').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  const ci = document.getElementById('custom-words');
+  ci.style.display = b.dataset.w === 'custom' ? 'block' : 'none';
+});
+
+document.getElementById('timer-grid').addEventListener('click', e => {
+  const b = e.target.closest('[data-t]'); if (!b) return;
+  document.querySelectorAll('#timer-grid .player-badge').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  const ci = document.getElementById('custom-timer');
+  ci.style.display = b.dataset.t === 'custom' ? 'block' : 'none';
+});
+
+function goToSetup() {
+  // read player count
+  const activeN = document.querySelector('#player-count-grid .player-badge.active');
+  if (activeN.dataset.n === 'custom') {
+    G.numPlayers = parseInt(document.getElementById('custom-count').value) || 4;
+  } else { G.numPlayers = parseInt(activeN.dataset.n); }
+
+  // words per person
+  const activeW = document.querySelector('#words-per-person-grid .player-badge.active');
+  if (activeW.dataset.w === 'custom') {
+    G.wordsPerPerson = parseInt(document.getElementById('custom-words').value) || 5;
+  } else { G.wordsPerPerson = parseInt(activeW.dataset.w); }
+
+  // timer
+  const activeT = document.querySelector('#timer-grid .player-badge.active');
+  if (activeT.dataset.t === 'custom') {
+    G.timerSecs = parseInt(document.getElementById('custom-timer').value) || 60;
+  } else { G.timerSecs = parseInt(activeT.dataset.t); }
+
+  G.numPlayers = Math.max(2, Math.min(12, G.numPlayers));
+  G.wordsPerPerson = Math.max(1, Math.min(20, G.wordsPerPerson));
+  G.timerSecs = Math.max(10, Math.min(300, G.timerSecs));
+
+  buildNameInputs();
+  goTo('screen-setup');
+}
+
+// ═══════════════════════════════════════════════════
+//  SCREEN 2 — PLAYER NAMES
+// ═══════════════════════════════════════════════════
+function buildNameInputs() {
+  const container = document.getElementById('name-inputs');
+  container.innerHTML = '';
+  for (let i = 0; i < G.numPlayers; i++) {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = `Player ${i+1}`;
+    inp.value = G.playerNames[i] || '';
+    inp.id = `pname-${i}`;
+    container.appendChild(inp);
+  }
+}
+
+function shufflePlayers() {
+  // collect current names, shuffle, re-fill
+  let names = [];
+  for (let i = 0; i < G.numPlayers; i++) {
+    names.push(document.getElementById(`pname-${i}`).value || `Player ${i+1}`);
+  }
+  shuffle(names);
+  for (let i = 0; i < G.numPlayers; i++) {
+    document.getElementById(`pname-${i}`).value = names[i];
+  }
+}
+
+function goToWords() {
+  G.playerNames = [];
+  for (let i = 0; i < G.numPlayers; i++) {
+    G.playerNames.push(document.getElementById(`pname-${i}`).value.trim() || `Player ${i+1}`);
+  }
+  // assign teams
+  G.teamA = []; G.teamB = [];
+  G.playerNames.forEach((n, i) => (i % 2 === 0 ? G.teamA : G.teamB).push(n));
+
+  G.allWords = [];
+  G.currentSubmitter = 0;
+  renderWordSubmission();
+  goTo('screen-words');
+}
+
+// ═══════════════════════════════════════════════════
+//  SCREEN 3 — WORD SUBMISSION
+// ═══════════════════════════════════════════════════
+function renderWordSubmission() {
+  const p = G.currentSubmitter;
+  const total = G.numPlayers;
+  document.getElementById('words-player-label').textContent = `Player ${p+1} of ${total}`;
+  document.getElementById('words-player-name').textContent = G.playerNames[p];
+  document.getElementById('words-count-label').textContent = G.wordsPerPerson;
+  document.getElementById('words-progress').style.width = `${(p / total) * 100}%`;
+
+  const container = document.getElementById('words-inputs');
+  container.innerHTML = '';
+  for (let i = 0; i < G.wordsPerPerson; i++) {
+    const row = document.createElement('div');
+    row.className = 'word-row';
+    row.innerHTML = `<span class="word-num">${i+1}.</span>
+      <input type="text" id="w-${i}" placeholder="Word or phrase…">`;
+    container.appendChild(row);
+  }
+  setTimeout(() => { const f = document.getElementById('w-0'); if(f) f.focus(); }, 100);
+}
+
+function submitWords() {
+  const words = [];
+  for (let i = 0; i < G.wordsPerPerson; i++) {
+    const val = (document.getElementById(`w-${i}`)?.value || '').trim();
+    if (val) words.push(val);
+  }
+  if (words.length < 1) { alert('Write at least 1 word!'); return; }
+
+  G.allWords.push(...words);
+  G.currentSubmitter++;
+
+  if (G.currentSubmitter >= G.numPlayers) {
+    // All done → teams screen
+    document.getElementById('bowl-count').textContent = G.allWords.length;
+    document.getElementById('team-a-names').textContent = G.teamA.join(', ');
+    document.getElementById('team-b-names').textContent = G.teamB.join(', ');
+    goTo('screen-teams');
+  } else {
+    renderWordSubmission();
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  ROUND MANAGEMENT
+// ═══════════════════════════════════════════════════
+function goToRoundIntro() {
+  const r = G.currentRound;
+  if (r >= 3) { showGameOver(); return; }
+  const rd = ROUNDS[r];
+
+  document.getElementById('ri-round-badge').textContent = `Round ${r+1} of 3`;
+  document.getElementById('ri-round-name').textContent = rd.name;
+  document.getElementById('ri-round-icon').textContent = rd.icon;
+  document.getElementById('ri-round-desc').textContent = rd.rule;
+
+  // whose turn?
+  const giver = currentGiver();
+  document.getElementById('ri-first-up').textContent = giver;
+  document.getElementById('ri-first-team').textContent = `Team ${G.currentTeam} clue-giver`;
+
+  // show scores after round 1+
+  const scoresDiv = document.getElementById('ri-scores');
+  if (r > 0) {
+    scoresDiv.style.display = 'block';
+    renderScoreRows('ri-score-table');
+  } else {
+    scoresDiv.style.display = 'none';
+  }
+
+  // Refill bowl at start of each round
+  G.bowl = shuffle([...G.allWords]);
+  G.bowlLeft = [...G.bowl];
+
+  goTo('screen-round-intro');
+}
+
+function currentGiver() {
+  if (G.currentTeam === 'A') return G.teamA[G.teamATurnIdx % G.teamA.length];
+  return G.teamB[G.teamBTurnIdx % G.teamB.length];
+}
+function currentTeamName() { return G.currentTeam === 'A' ? 'Team A 🟢' : 'Team B 🔴'; }
+
+// ═══════════════════════════════════════════════════
+//  TURN — START
+// ═══════════════════════════════════════════════════
+function startTurn() {
+  if (G.bowlLeft.length === 0) { endRound(); return; }
+
+  G.turnWords = [];
+  G.timerLeft = G.timerSecs;
+
+  // update play screen static info
+  const rd = ROUNDS[G.currentRound];
+  document.getElementById('round-hint-label').textContent = `Round ${G.currentRound+1} · ${rd.name}`;
+  document.getElementById('play-score-a').textContent = totalScore('A');
+  document.getElementById('play-score-b').textContent = totalScore('B');
+  document.getElementById('play-whose-turn').innerHTML = `<strong>${currentGiver()}</strong> is giving clues for ${currentTeamName()}`;
+
+  updateTimerUI();
+  updateWordDisplay();
+  goTo('screen-play');
+  startTimer();
+}
+
+function updateWordDisplay() {
+  if (G.bowlLeft.length === 0) {
+    document.getElementById('current-word').textContent = '(bowl empty!)';
+    document.getElementById('words-left-count').textContent = '';
+    document.getElementById('btn-got').disabled = true;
+    document.getElementById('btn-skip').disabled = true;
+    return;
+  }
+  document.getElementById('btn-got').disabled = false;
+  document.getElementById('btn-skip').disabled = false;
+  const w = G.bowlLeft[0];
+  document.getElementById('current-word').textContent = w;
+  document.getElementById('play-bowl-count').textContent = G.bowlLeft.length;
+  document.getElementById('words-left-count').textContent = `${G.bowlLeft.length} word${G.bowlLeft.length!==1?'s':''} in bowl`;
+}
+
+// ═══════════════════════════════════════════════════
+//  TURN — TIMER
+// ═══════════════════════════════════════════════════
+const CIRC = 2 * Math.PI * 48; // ≈ 301.6
+
+function startTimer() {
+  clearInterval(G.timerInterval);
+  G.timerInterval = setInterval(() => {
+    G.timerLeft--;
+    updateTimerUI();
+    if (G.timerLeft <= 0) {
+      clearInterval(G.timerInterval);
+      timeUp();
+    }
+  }, 1000);
+}
+
+function updateTimerUI() {
+  const t = G.timerLeft;
+  const frac = t / G.timerSecs;
+  document.getElementById('timer-display').textContent = t;
+  const offset = CIRC * (1 - frac);
+  document.getElementById('timer-circle').style.strokeDashoffset = offset;
+  const ring = document.getElementById('timer-ring');
+  ring.classList.toggle('timer-low', t <= 10);
+}
+
+function timeUp() {
+  // current word on table goes back — not counted
+  showTurnEnd(true);
+}
+
+// ═══════════════════════════════════════════════════
+//  TURN — ACTIONS
+// ═══════════════════════════════════════════════════
+function gotIt() {
+  const word = G.bowlLeft.shift();
+  G.turnWords.push({ word, got: true });
+  if (G.bowlLeft.length === 0) {
+    clearInterval(G.timerInterval);
+    showTurnEnd(false, true);
+    return;
+  }
+  updateWordDisplay();
+}
+
+function skipWord() {
+  const word = G.bowlLeft.shift();
+  G.bowlLeft.push(word); // put at end
+  G.turnWords.push({ word, got: false });
+  updateWordDisplay();
+}
+
+// ═══════════════════════════════════════════════════
+//  TURN — END
+// ═══════════════════════════════════════════════════
+function showTurnEnd(timedOut, bowlEmpty) {
+  clearInterval(G.timerInterval);
+
+  const gotCount = G.turnWords.filter(w => w.got).length;
+  const team = G.currentTeam;
+
+  document.getElementById('te-label').textContent = timedOut ? "⏰ Time's up!" : bowlEmpty ? "🥗 Bowl's empty!" : "Turn over";
+  document.getElementById('te-heading').textContent = `${currentGiver()} — ${gotCount} word${gotCount!==1?'s':''} guessed`;
+  document.getElementById('te-subtext').textContent = "Adjust any words if needed, then confirm.";
+
+  const list = document.getElementById('turn-word-list');
+  list.innerHTML = '';
+  G.turnWords.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = `word-result ${item.got ? 'got' : 'skip'}`;
+    div.innerHTML = `<span class="wr-word">${item.word}</span>
+      <button class="wr-toggle" onclick="toggleWordResult(${idx})">${item.got ? '✓ Got' : '↷ Skip'}</button>`;
+    list.appendChild(div);
+  });
+
+  // skipped words back in bowl if timed out
+  if (timedOut) {
+    const onTable = G.bowlLeft[0];
+    document.getElementById('te-subtext').textContent = `"${onTable || ''}" goes back in the bowl.`;
+  }
+
+  document.getElementById('te-summary').innerHTML = `<strong>${gotCount}</strong> guessed correctly → <span class="pill pill-${team==='A'?'green':'red'}">Team ${team}</span> gets those points.`;
+
+  document.getElementById('te-next-btn').textContent = G.bowlLeft.length === 0
+    ? (G.currentRound < 2 ? 'End Round →' : 'End Game →')
+    : 'Next Turn →';
+
+  goTo('screen-turn-end');
+}
+
+function toggleWordResult(idx) {
+  G.turnWords[idx].got = !G.turnWords[idx].got;
+  if (!G.turnWords[idx].got) {
+    // put back in bowl
+    G.bowlLeft.push(G.turnWords[idx].word);
+  } else {
+    // remove from bowl if it got added back
+    const bi = G.bowlLeft.indexOf(G.turnWords[idx].word);
+    if (bi !== -1) G.bowlLeft.splice(bi, 1);
+  }
+  showTurnEnd(false, false);
+  // re-render without re-goTo
+  const gotCount = G.turnWords.filter(w => w.got).length;
+  const team = G.currentTeam;
+  document.getElementById('te-heading').textContent = `${currentGiver()} — ${gotCount} word${gotCount!==1?'s':''} guessed`;
+  document.getElementById('te-summary').innerHTML = `<strong>${gotCount}</strong> guessed correctly → <span class="pill pill-${team==='A'?'green':'red'}">Team ${team}</span> gets those points.`;
+}
+
+function endTurn() {
+  // tally score
+  const got = G.turnWords.filter(w => w.got).length;
+  G.scores[G.currentTeam][G.currentRound] += got;
+
+  // advance turn index
+  if (G.currentTeam === 'A') { G.teamATurnIdx++; }
+  else { G.teamBTurnIdx++; }
+
+  // switch team
+  G.currentTeam = G.currentTeam === 'A' ? 'B' : 'A';
+
+  if (G.bowlLeft.length === 0) {
+    endRound();
+  } else {
+    goToRoundIntro_mid();
+  }
+}
+
+// mid-round: skip the full intro, just show who's next
+function goToRoundIntro_mid() {
+  const r = G.currentRound;
+  const rd = ROUNDS[r];
+  document.getElementById('ri-round-badge').textContent = `Round ${r+1} of 3`;
+  document.getElementById('ri-round-name').textContent = rd.name;
+  document.getElementById('ri-round-icon').textContent = rd.icon;
+  document.getElementById('ri-round-desc').textContent = rd.rule;
+  const giver = currentGiver();
+  document.getElementById('ri-first-up').textContent = giver;
+  document.getElementById('ri-first-team').textContent = `Team ${G.currentTeam} — ${G.bowlLeft.length} words left in bowl`;
+  document.getElementById('ri-scores').style.display = 'none';
+  document.getElementById('ri-btn').textContent = 'Start Turn →';
+  goTo('screen-round-intro');
+}
+
+// ═══════════════════════════════════════════════════
+//  ROUND END
+// ═══════════════════════════════════════════════════
+function endRound() {
+  const r = G.currentRound;
+  document.getElementById('br-heading').textContent = `🎉 Round ${r+1} Done!`;
+  document.getElementById('br-word-count').textContent = G.allWords.length;
+
+  renderScoreRows('br-score-table');
+
+  G.currentRound++;
+  const nextBtn = document.getElementById('br-next-btn');
+  if (G.currentRound >= 3) {
+    nextBtn.textContent = 'See Final Results →';
+    nextBtn.onclick = showGameOver;
+  } else {
+    nextBtn.textContent = `Start Round ${G.currentRound+1}: ${ROUNDS[G.currentRound].name} →`;
+    nextBtn.onclick = goToRoundIntro;
+  }
+
+  goTo('screen-between-rounds');
+}
+
+// ═══════════════════════════════════════════════════
+//  GAME OVER
+// ═══════════════════════════════════════════════════
+function showGameOver() {
+  renderScoreRows('go-score-table');
+  const ta = totalScore('A'), tb = totalScore('B');
+  const banner = document.getElementById('winner-banner');
+  if (ta > tb) {
+    document.getElementById('winner-text').textContent = '🟢 Team A Wins!';
+    document.getElementById('winner-sub').textContent = `${ta} – ${tb}`;
+  } else if (tb > ta) {
+    document.getElementById('winner-text').textContent = '🔴 Team B Wins!';
+    document.getElementById('winner-sub').textContent = `${tb} – ${ta}`;
+  } else {
+    document.getElementById('winner-text').textContent = "It's a Tie! 🤝";
+    document.getElementById('winner-sub').textContent = `${ta} – ${tb}`;
+  }
+  goTo('screen-gameover');
+}
+
+function restartGame() {
+  initState();
+  goTo('screen-home');
+}
+
+// ═══════════════════════════════════════════════════
+//  SCORE HELPERS
+// ═══════════════════════════════════════════════════
+function totalScore(team) {
+  return G.scores[team].reduce((a,b) => a+b, 0);
+}
+
+function renderScoreRows(tableId) {
+  const tbody = document.getElementById(tableId);
+  tbody.innerHTML = '';
+  const ta = totalScore('A'), tb = totalScore('B');
+  ['A','B'].forEach(team => {
+    const s = G.scores[team];
+    const total = totalScore(team);
+    const isLeader = (team==='A' && ta>tb) || (team==='B' && tb>ta);
+    const tr = document.createElement('tr');
+    if (isLeader) tr.classList.add('leader');
+    tr.innerHTML = `<td>${team==='A'?'🟢 Team A':'🔴 Team B'}</td>
+      <td class="pts">${s[0]}</td><td class="pts">${s[1]}</td><td class="pts">${s[2]}</td>
+      <td class="pts"><strong>${total}</strong></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i+1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Enter key advances word inputs
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const screen = document.querySelector('.screen.active');
+  if (!screen) return;
+  if (screen.id === 'screen-words') {
+    const inputs = screen.querySelectorAll('input[type=text]');
+    const focused = Array.from(inputs).findIndex(i => i === document.activeElement);
+    if (focused < inputs.length - 1) { inputs[focused+1].focus(); }
+    else { submitWords(); }
+  }
+});
+</script>
+
+</body>
+</html>
