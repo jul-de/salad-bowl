@@ -253,7 +253,8 @@ window.joinRoom = async function() {
 function enterLobby() {
   goTo('screen-lobby');
   $('lobby-code').textContent = L.roomCode;
-  $('lobby-link').textContent = window.location.href.split('?')[0] + '?room=' + L.roomCode;
+  const baseUrl = window.location.origin + window.location.pathname;
+  $('lobby-link').textContent = baseUrl + '?room=' + L.roomCode;
 
   listen('players', players => {
     if (!players) return;
@@ -832,10 +833,34 @@ window.shuffleTeams = async function() {
 
 window.copyLink = function() {
   const link = $('lobby-link').textContent;
-  navigator.clipboard.writeText(link).then(() => {
+
+  // Try modern clipboard API first, fall back to textarea trick for iOS Safari
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(() => {
+      $('copy-btn').textContent = '✓ Copied!';
+      setTimeout(() => $('copy-btn').textContent = '📋 Copy link', 1500);
+    }).catch(() => fallbackCopy(link));
+  } else {
+    fallbackCopy(link);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
     $('copy-btn').textContent = '✓ Copied!';
-    setTimeout(() => $('copy-btn').textContent = '📋 Copy link', 1500);
-  });
+  } catch(e) {
+    // Last resort — let user copy the code manually
+    $('copy-btn').textContent = '⚠ Tap and hold the link to copy';
+  }
+  setTimeout(() => $('copy-btn').textContent = '📋 Copy link', 2000);
+  document.body.removeChild(ta);
 }
 
 // ═══════════════════════════════════════════════════
@@ -984,7 +1009,7 @@ input:focus { border-color:var(--green); }
 .link-box {
   font-family:'DM Mono',monospace; font-size:.7rem; padding:10px 12px;
   background:var(--paper); border-radius:8px; word-break:break-all;
-  color:var(--gray); margin-top:6px;
+  color:var(--gray); margin-top:6px; user-select:all; -webkit-user-select:all;
 }
 
 /* WORDS */
