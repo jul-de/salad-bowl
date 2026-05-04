@@ -85,6 +85,28 @@ function genCode() {
 }
 
 // ═══════════════════════════════════════════════════
+//  SESSION PERSISTENCE (survives tab close / app switch)
+// ═══════════════════════════════════════════════════
+function saveSession() {
+  try {
+    localStorage.setItem('sb_session', JSON.stringify({
+      roomCode: L.roomCode,
+      playerId: L.playerId,
+      playerName: L.playerName,
+    }));
+  } catch(e) {}
+}
+function clearSession() {
+  try { localStorage.removeItem('sb_session'); } catch(e) {}
+}
+function loadSession() {
+  try {
+    const s = localStorage.getItem('sb_session');
+    return s ? JSON.parse(s) : null;
+  } catch(e) { return null; }
+}
+
+// ═══════════════════════════════════════════════════
 //  FIREBASE LISTENERS
 // ═══════════════════════════════════════════════════
 function listen(path, cb) {
@@ -103,6 +125,7 @@ function stopListening() {
 window.showHome = function() {
   stopListening();
   clearInterval(L.timerInterval);
+  clearSession();
   L = { roomCode:null, playerId:null, playerName:null, unsubscribers:[], timerInterval:null, timerSecs:60, lastWordCount:null };
   goTo('screen-home');
 }
@@ -162,6 +185,7 @@ window.createRoom = async function() {
   L.playerId = uid();
   L.timerSecs = timerSecs;
 
+  saveSession();
   await set(roomRef(), {
     code,
     host: L.playerId,
@@ -213,6 +237,8 @@ window.joinRoom = async function() {
   await update(ref(db, `rooms/${code}/players/${L.playerId}`), {
     name: L.playerName, team, joined: Date.now(), wordsSubmitted: false
   });
+
+  saveSession();
 
   if (room.phase === 'words') {
     enterWordSubmission(room.settings.wordsPerPerson);
@@ -798,12 +824,61 @@ window.copyLink = function() {
   });
 }
 
-const urlParams = new URLSearchParams(window.location.search);
-const autoRoom = urlParams.get('room');
-if (autoRoom) {
-  $('join-code').value = autoRoom;
-  $('home-name').focus();
-}
+// ═══════════════════════════════════════════════════
+//  AUTO-REJOIN ON PAGE LOAD
+// ═══════════════════════════════════════════════════
+(async function autoRejoin() {
+  const session = loadSession();
+  if (session && session.roomCode && session.playerId) {
+    // Check if room still exists and player is still in it
+    try {
+      const snap = await get(ref(db, `rooms/${session.roomCode}`));
+      if (snap.exists()) {
+        const room = snap.val();
+        const players = room.players || {};
+        if (players[session.playerId]) {
+          // Room exists and player is in it — rejoin!
+          L.roomCode = session.roomCode;
+          L.playerId = session.playerId;
+          L.playerName = session.playerName;
+          L.timerSecs = room.settings?.timerSecs || 60;
+
+          if (room.phase === 'lobby') {
+            enterLobby();
+          } else if (room.phase === 'words') {
+            // Check if this player already submitted
+            if (players[session.playerId].wordsSubmitted) {
+              // Already submitted — just wait for game to start
+              goTo('screen-words');
+              $('submit-words-btn').disabled = true;
+              $('submit-words-btn').innerHTML = '<span class="spinner"></span> Waiting for others…';
+              listen('phase', ph => {
+                if (ph === 'playing') { stopListening(); enterGame(); }
+              });
+            } else {
+              enterWordSubmission(room.settings?.wordsPerPerson || 5);
+            }
+          } else if (room.phase === 'playing' || room.phase === 'done') {
+            enterGame();
+          }
+          return; // skip normal home screen
+        }
+      }
+    } catch(e) {
+      console.log('Auto-rejoin failed:', e);
+    }
+    // If we get here, session was stale
+    clearSession();
+  }
+
+  // Normal flow — check URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const autoRoom = urlParams.get('room');
+  if (autoRoom) {
+    $('join-code').value = autoRoom;
+    $('home-name').focus();
+  }
+})();
 
 window.newGame = async function() {
   await remove(roomRef());
