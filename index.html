@@ -403,10 +403,12 @@ async function renderGame(game) {
   const teamB = Object.values(players).filter(p => p.team==='B').map(p=>p.name);
 
   const giverName = getGiverName(game, teamA, teamB);
-  // Use currentGiverId for all active phases (set when a turn starts)
-  const amGiver = game.currentGiverId
-    ? game.currentGiverId === L.playerId
-    : giverName === L.playerName;
+  const expectedGiverId = getGiverId(game, players);
+  // During active play, trust currentGiverId (set at startTurn). For all other
+  // phases (round_intro, turn_end, etc.) use expectedGiverId from turn order.
+  const amGiver = game.phase === 'playing'
+    ? (game.currentGiverId === L.playerId)
+    : (expectedGiverId === L.playerId);
   const currentTeam = game.currentTeam || 'A';
   const bowl = game.bowlLeft || [];
   const scores = game.scores || { A:[0,0,0], B:[0,0,0] };
@@ -524,6 +526,16 @@ function getGiverName(game, teamA, teamB) {
   const members = team === 'A' ? teamA : teamB;
   const idx = team === 'A' ? (game.teamATurnIdx||0) : (game.teamBTurnIdx||0);
   return members[idx % members.length] || '?';
+}
+
+function getGiverId(game, players) {
+  const team = game.currentTeam || 'A';
+  // Get player IDs for this team in join order (same order as names)
+  const teamIds = Object.entries(players)
+    .filter(([id, p]) => p.team === team)
+    .map(([id, p]) => id);
+  const idx = team === 'A' ? (game.teamATurnIdx||0) : (game.teamBTurnIdx||0);
+  return teamIds[idx % teamIds.length] || null;
 }
 
 function hideAllPanels() {
@@ -711,7 +723,7 @@ window.confirmTurn = async function() {
     // round over
     const nextRound = (game.round || 0) + 1;
     if (nextRound >= 3) {
-      await update(roomRef('game'), { scores, phase: 'done', teamATurnIdx, teamBTurnIdx });
+      await update(roomRef('game'), { scores, phase: 'done', teamATurnIdx, teamBTurnIdx, currentGiverId: null });
       await update(roomRef(), { phase: 'done' });
     } else {
       // find next giver (the one who goes first next round = nextTeam's next person)
@@ -720,6 +732,7 @@ window.confirmTurn = async function() {
         teamATurnIdx, teamBTurnIdx,
         currentTeam: nextTeam,
         turnWords: [],
+        currentGiverId: null,  // clear so next round uses turn order
       });
     }
   } else {
@@ -740,6 +753,7 @@ window.confirmTurn = async function() {
       turnWords: [],
       carryOverTime: carryOver,
       bowlLeft: reshuffled,
+      currentGiverId: null,  // clear so round_intro uses turn order
     });
   }
 }
