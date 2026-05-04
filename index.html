@@ -399,7 +399,10 @@ async function renderGame(game) {
       renderScoreMini('pi-score-body', scores);
     } else { $('pi-scores').style.display = 'none'; }
     const carryOver = game.carryOverTime || 0;
-    const timerLabel = carryOver > 0 ? `Start My Turn (${carryOver}s remaining) →` : 'Start My Turn →';
+    const isCarryPlayer = game.carryOverPlayerId === L.playerId;
+    const timerLabel = (carryOver > 0 && isCarryPlayer)
+      ? `Start My Turn (${carryOver}s remaining) →`
+      : 'Start My Turn →';
     $('pi-start-btn').textContent = amGiver ? timerLabel : `Waiting for ${giverName}…`;
     $('pi-start-btn').disabled = !amGiver;
     $('pi-start-btn').onclick = amGiver ? startTurn : null;
@@ -500,15 +503,17 @@ window.startTurn = async function() {
   const game = snap.val();
   if (!game) return;
 
-  const carryOver = game.carryOverTime || 0;
-  const duration = carryOver > 0 ? carryOver : L.timerSecs;
+  const carryOver = (game.carryOverTime || 0);
+  const isCarryPlayer = game.carryOverPlayerId === L.playerId;
+  const duration = (carryOver > 0 && isCarryPlayer) ? carryOver : L.timerSecs;
   await update(roomRef('game'), {
     phase: 'playing',
     timerStart: Date.now(),
     timerDuration: duration,
     turnWords: [],
     currentGiverId: L.playerId,
-    carryOverTime: 0,  // clear it once used
+    carryOverTime: 0,       // clear once used
+    carryOverPlayerId: null,
   });
 }
 
@@ -522,10 +527,14 @@ window.gotIt = async function() {
   const turnWords = [...(game.turnWords || []), { word, got: true }];
 
   if (bowl.length === 0) {
-    // Bowl empty mid-turn — calculate remaining time to carry over
+    // Bowl empty mid-turn — calculate remaining time to carry over to THIS giver next round
     const elapsed = (Date.now() - (game.timerStart || Date.now())) / 1000;
     const remaining = Math.max(0, Math.floor((game.timerDuration || 60) - elapsed));
-    await update(roomRef('game'), { bowlLeft: bowl, turnWords, phase: 'turn_end', carryOverTime: remaining });
+    await update(roomRef('game'), {
+      bowlLeft: bowl, turnWords, phase: 'turn_end',
+      carryOverTime: remaining,
+      carryOverPlayerId: game.currentGiverId,  // must be THIS player who gets the bonus
+    });
     return;
   }
   await update(roomRef('game'), { bowlLeft: bowl, turnWords });
