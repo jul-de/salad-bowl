@@ -831,36 +831,29 @@ window.shuffleTeams = async function() {
   await update(roomRef(), updates);
 }
 
-window.copyLink = function() {
+window.copyLink = async function() {
   const link = $('lobby-link').textContent;
 
-  // Try modern clipboard API first, fall back to textarea trick for iOS Safari
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(link).then(() => {
-      $('copy-btn').textContent = '✓ Copied!';
-      setTimeout(() => $('copy-btn').textContent = '📋 Copy link', 1500);
-    }).catch(() => fallbackCopy(link));
-  } else {
-    fallbackCopy(link);
+  // Use native share sheet on mobile (works reliably on iOS Safari)
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: '🥗 Salad Bowl', text: 'Join my Salad Bowl game!', url: link });
+      return;
+    } catch(e) {
+      // User cancelled share — that's fine, do nothing
+      return;
+    }
   }
-}
 
-function fallbackCopy(text) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
-  document.body.appendChild(ta);
-  ta.focus();
-  ta.select();
+  // Desktop fallback — clipboard
   try {
-    document.execCommand('copy');
+    await navigator.clipboard.writeText(link);
     $('copy-btn').textContent = '✓ Copied!';
+    setTimeout(() => $('copy-btn').textContent = '📤 Share link', 1500);
   } catch(e) {
-    // Last resort — let user copy the code manually
-    $('copy-btn').textContent = '⚠ Tap and hold the link to copy';
+    // Last resort
+    prompt('Copy this link:', link);
   }
-  setTimeout(() => $('copy-btn').textContent = '📋 Copy link', 2000);
-  document.body.removeChild(ta);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1234,7 +1227,7 @@ input:focus { border-color:var(--green); }
     <div class="gap-8">
       <p class="label">Share this link</p>
       <div class="link-box" id="lobby-link"></div>
-      <button class="btn btn-secondary btn-sm w100" id="copy-btn" onclick="copyLink()">📋 Copy link</button>
+      <button class="btn btn-secondary btn-sm w100" id="copy-btn" onclick="copyLink()">📤 Share link</button>
     </div>
     <div>
       <div class="team-card team-a">
