@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -12,7 +11,6 @@
      Replace the placeholder object with your
      firebaseConfig from the Firebase console.
 ═══════════════════════════════════════ -->
-
 <script>
   const FIREBASE_CONFIG = {
     apiKey: "AIzaSyDv49ehlxVnhUr9p3Fa0jdiLf4dj-MWgoA",
@@ -157,16 +155,24 @@ document.querySelectorAll('[data-grid]').forEach(grid => {
     const customId = grid.dataset.grid + '-custom';
     const ci = document.getElementById(customId);
     if (ci) ci.style.display = b.dataset.val === 'custom' ? 'block' : 'none';
+    // Mode hint
+    if (grid.dataset.grid === 'mode') {
+      const hint = document.getElementById('mode-hint');
+      if (hint) hint.textContent = b.dataset.val === 'ffa'
+        ? 'Everyone guesses. Individual scores. Great for 3-5 players.'
+        : '2 teams take turns. Classic style.';
+    }
   });
 });
 
 function readGrid(gridId, customId) {
   const active = document.querySelector(`[data-grid="${gridId}"] [data-val].active`);
   if (!active) return null;
-  if (active.dataset.val === 'custom') {
+  if (active.dataset.val === 'custom' && customId) {
     return parseInt(document.getElementById(customId)?.value) || null;
   }
-  return parseInt(active.dataset.val);
+  const num = parseInt(active.dataset.val);
+  return isNaN(num) ? active.dataset.val : num;
 }
 
 window.createRoom = async function() {
@@ -175,6 +181,8 @@ window.createRoom = async function() {
 
   const wordsPerPerson = readGrid('wpg', 'wpg-custom') || 5;
   const timerSecs      = readGrid('tg', 'tg-custom') || 60;
+  const modeVal        = readGrid('mode', null);
+  const mode           = modeVal === 'ffa' ? 'ffa' : 'teams';
 
   let code = genCode();
   // ensure unique
@@ -189,7 +197,7 @@ window.createRoom = async function() {
   await set(roomRef(), {
     code,
     host: L.playerId,
-    settings: { wordsPerPerson, timerSecs },
+    settings: { wordsPerPerson, timerSecs, mode },
     phase: 'lobby',
     players: {
       [L.playerId]: { name: L.playerName, team: 'A', joined: Date.now(), wordsSubmitted: false }
@@ -267,7 +275,10 @@ function enterLobby() {
     get(roomRef('host')).then(s => {
       const amHost = s.val() === L.playerId;
       $('start-btn').style.display = amHost ? 'block' : 'none';
-      $('shuffle-btn').style.display = amHost ? 'block' : 'none';
+      get(roomRef('settings')).then(ms => {
+        const isFFA = ms.val()?.mode === 'ffa';
+        $('shuffle-btn').style.display = (amHost && !isFFA) ? 'block' : 'none';
+      });
       $('start-btn').disabled = Object.keys(players).length < 2;
     });
   });
@@ -289,6 +300,20 @@ function renderLobbyPlayers(players) {
   $('lobby-team-a').textContent = teamA.join(', ') || '—';
   $('lobby-team-b').textContent = teamB.join(', ') || '—';
   $('lobby-count').textContent = `${Object.keys(players).length} player${Object.keys(players).length!==1?'s':''} joined`;
+  // Check if FFA — hide team B card and relabel
+  get(roomRef('settings')).then(s => {
+    const mode = s.val()?.mode || 'teams';
+    const teamBCard = document.querySelector('.team-card.team-b');
+    const teamALabel = document.querySelector('.team-label-a');
+    if (mode === 'ffa') {
+      if (teamBCard) teamBCard.style.display = 'none';
+      if (teamALabel) teamALabel.textContent = 'Players 🎮';
+      $('lobby-team-a').textContent = [...teamA, ...teamB].join(', ') || '—';
+    } else {
+      if (teamBCard) teamBCard.style.display = 'block';
+      if (teamALabel) teamALabel.textContent = 'Team A 🟢';
+    }
+  });
 }
 
 window.startGame = async function() {
@@ -297,13 +322,24 @@ window.startGame = async function() {
   const ids = Object.keys(players);
   if (ids.length < 2) { alert('Need at least 2 players!'); return; }
 
-  // Shuffle player IDs and re-assign teams randomly
-  const shuffled = shuffle(ids);
-  const updates = {};
-  shuffled.forEach((id, i) => {
-    updates[`players/${id}/team`] = i % 2 === 0 ? 'A' : 'B';
-  });
-  await update(roomRef(), updates);
+  // Get mode
+  const settingsSnap = await get(roomRef('settings'));
+  const gameMode = settingsSnap.val()?.mode || 'teams';
+
+  if (gameMode === 'ffa') {
+    // FFA: everyone on team A (no split, everyone guesses)
+    const updates = {};
+    ids.forEach(id => { updates[`players/${id}/team`] = 'A'; });
+    await update(roomRef(), updates);
+  } else {
+    // Teams: shuffle and split into A/B
+    const shuffled = shuffle(ids);
+    const updates = {};
+    shuffled.forEach((id, i) => {
+      updates[`players/${id}/team`] = i % 2 === 0 ? 'A' : 'B';
+    });
+    await update(roomRef(), updates);
+  }
 
   await update(roomRef(), { phase: 'words' });
 }
@@ -352,7 +388,7 @@ async function submitWords(wordsPerPerson) {
   // store words under player
   await update(ref(db, `rooms/${L.roomCode}/players/${L.playerId}`), { wordsSubmitted: true });
   const wordObj = {};
-  words.forEach((w,i) => { wordObj[`${L.playerId}_${i}`] = w; });
+  words.forEach((w,i) => { wordObj[`${L.playerId}_${i}`] = JSON.stringify({ text: w, author: L.playerId }); });
   await update(ref(db, `rooms/${L.roomCode}/words`), wordObj);
 
   // check if everyone submitted — any player can trigger this
@@ -363,14 +399,24 @@ async function submitWords(wordsPerPerson) {
   if (allDone) {
     // build bowl and start game
     const wSnap = await get(roomRef('words'));
-    const allWords = Object.values(wSnap.val() || {});
+    const rawWords = wSnap.val() || {};
+    // Parse words — support both old format (plain string) and new format (JSON with author)
+    const wordEntries = Object.values(rawWords).map(w => {
+      try { const p = JSON.parse(w); return { text: p.text, author: p.author }; }
+      catch(e) { return { text: w, author: null }; }
+    });
+    const allWords = wordEntries.map(w => w.text);
     const bowl = shuffle(allWords);
+    // Store word-author mapping for smart bowl (round 1)
+    const wordAuthors = {};
+    wordEntries.forEach(w => { wordAuthors[w.text] = w.author; });
 
     await update(roomRef('game'), {
       bowl,
       bowlLeft: bowl,
       phase: 'round_intro',
       round: 0,
+      wordAuthors,
     });
     await update(roomRef(), { phase: 'playing' });
   }
@@ -417,12 +463,23 @@ async function renderGame(game) {
   const scores = game.scores || { A:[0,0,0], B:[0,0,0] };
 
   // update persistent header
+  const isFFA = settings.mode === 'ffa';
   $('g-round-label').textContent = `Round ${round+1} · ${rd.name} ${rd.icon}`;
   $('g-score-a').textContent = scores.A.reduce((a,b)=>a+b,0);
   $('g-score-b').textContent = scores.B.reduce((a,b)=>a+b,0);
   $('g-bowl').textContent = bowl.length;
   $('g-giver').textContent = amGiver ? '🎤 You are giving clues!' : `🎤 ${giverName} is giving clues`;
-  $('g-team').textContent = `for Team ${currentTeam} ${currentTeam==='A'?'🟢':'🔴'}`;
+  $('g-team').textContent = isFFA ? 'everyone guesses!' : `for Team ${currentTeam} ${currentTeam==='A'?'🟢':'🔴'}`;
+  // Hide team B score in FFA
+  const teamBScoreEl = $('g-score-b').closest('.gh-score');
+  const dividers = document.querySelectorAll('.gh-divider');
+  if (isFFA) {
+    teamBScoreEl.style.display = 'none';
+    if (dividers[2]) dividers[2].style.display = 'none';
+    document.querySelector('.gh-score .sl').textContent = 'Score';
+  } else {
+    teamBScoreEl.style.display = 'block';
+  }
 
   // show correct panel
   hideAllPanels();
@@ -586,14 +643,24 @@ window.startTurn = async function() {
   const carryOver = (game.carryOverTime || 0);
   const isCarryPlayer = game.carryOverPlayerId === L.playerId;
   const duration = (carryOver > 0 && isCarryPlayer) ? carryOver : L.timerSecs;
+
+  // Round 1 smart bowl: put other people's words first, own words at the end
+  let bowlLeft = [...(game.bowlLeft || [])];
+  if ((game.round || 0) === 0 && game.wordAuthors) {
+    const others = bowlLeft.filter(w => game.wordAuthors[w] !== L.playerId);
+    const mine = bowlLeft.filter(w => game.wordAuthors[w] === L.playerId);
+    bowlLeft = [...shuffle(others), ...shuffle(mine)];
+  }
+
   await update(roomRef('game'), {
     phase: 'playing',
     timerStart: Date.now(),
     timerDuration: duration,
     turnWords: [],
     currentGiverId: L.playerId,
-    carryOverTime: 0,       // clear once used
+    carryOverTime: 0,
     carryOverPlayerId: null,
+    bowlLeft,
   });
 }
 
@@ -627,13 +694,9 @@ window.skipWord = function() { debounced(async () => {
   if (!bowl.length) return;
 
   const word = bowl.shift();
-  // Insert skipped word at a random position in the remaining bowl
-  // (not immediately back at front, not always at the very end)
-  const minPos = Math.min(2, bowl.length); // at least 2 words away if possible
-  const insertAt = bowl.length <= minPos
-    ? bowl.length
-    : minPos + Math.floor(Math.random() * (bowl.length - minPos + 1));
-  bowl.splice(insertAt, 0, word);
+  // Put skipped word at end of this player's pile
+  // (between turns the bowl gets reshuffled anyway)
+  bowl.push(word);
   const turnWords = [...(game.turnWords || []), { word, got: false }];
   await update(roomRef('game'), { bowlLeft: bowl, turnWords });
 }); }
@@ -717,9 +780,15 @@ window.confirmTurn = async function() {
   // advance turn
   let teamATurnIdx = game.teamATurnIdx || 0;
   let teamBTurnIdx = game.teamBTurnIdx || 0;
-  const nextTeam = team === 'A' ? 'B' : 'A';
-  if (team === 'A') teamATurnIdx++;
-  else teamBTurnIdx++;
+  // In FFA, stay on team A always and rotate through all players
+  const isFFA = await get(roomRef('settings')).then(s => s.val()?.mode === 'ffa');
+  const nextTeam = isFFA ? 'A' : (team === 'A' ? 'B' : 'A');
+  if (isFFA) {
+    teamATurnIdx++;
+  } else {
+    if (team === 'A') teamATurnIdx++;
+    else teamBTurnIdx++;
+  }
 
   const bowl = game.bowlLeft || [];
   if (bowl.length === 0) {
@@ -764,7 +833,10 @@ window.confirmTurn = async function() {
 window.nextRound = async function() {
   const snap = await get(roomRef('game'));
   const game = snap.val();
-  const allWords = await get(roomRef('words')).then(s => Object.values(s.val() || {}));
+  const rawWords = await get(roomRef('words')).then(s => s.val() || {});
+  const allWords = Object.values(rawWords).map(w => {
+    try { return JSON.parse(w).text; } catch(e) { return w; }
+  });
   const bowl = shuffle(allWords);
   const nextRound = (game.round || 0) + 1;
 
@@ -834,7 +906,7 @@ window.shuffleTeams = async function() {
 }
 
 window.copyLink = async function() {
-  const link = $('lobby-link').textContent;
+  const link = $('lobby-link-a').textContent;
   if (navigator.share) {
     try {
       await navigator.share({ title: '🥗 Salad Bowl', text: 'Join my Salad Bowl game!', url: link });
@@ -1136,12 +1208,10 @@ input:focus { border-color:var(--green); }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:rgba(0,0,0,.1); border-radius:10px; }
 </style>
-
 </head>
 <body>
 
 <!-- ══════════════════ HOME ══════════════════ -->
-
 <div id="screen-home" class="screen active">
   <div class="card gap-16">
     <div class="text-center">
@@ -1161,12 +1231,19 @@ input:focus { border-color:var(--green); }
 </div>
 
 <!-- ══════════════════ CREATE ══════════════════ -->
-
 <div id="screen-create" class="screen">
   <div class="card gap-16">
     <div>
       <p class="label">New Room</p>
       <h2 style="margin-top:4px;">Set it up</h2>
+    </div>
+    <div class="gap-8">
+      <p class="label">Mode</p>
+      <div class="pick-grid" data-grid="mode">
+        <div class="pick-btn active" data-val="teams">Teams</div>
+        <div class="pick-btn" data-val="ffa">Free-for-All</div>
+      </div>
+      <p class="dimmed" style="font-size:.78rem;margin-top:2px;" id="mode-hint">2 teams take turns. Classic style.</p>
     </div>
     <div class="gap-8">
       <p class="label">Words per person</p>
@@ -1194,7 +1271,6 @@ input:focus { border-color:var(--green); }
 </div>
 
 <!-- ══════════════════ JOIN ══════════════════ -->
-
 <div id="screen-join" class="screen">
   <div class="card gap-16">
     <div>
@@ -1210,7 +1286,6 @@ input:focus { border-color:var(--green); }
 </div>
 
 <!-- ══════════════════ LOBBY ══════════════════ -->
-
 <div id="screen-lobby" class="screen">
   <div class="card gap-16">
     <div class="text-center">
@@ -1245,7 +1320,6 @@ input:focus { border-color:var(--green); }
 </div>
 
 <!-- ══════════════════ WORDS ══════════════════ -->
-
 <div id="screen-words" class="screen">
   <div class="card gap-16">
     <div>
@@ -1259,7 +1333,6 @@ input:focus { border-color:var(--green); }
 </div>
 
 <!-- ══════════════════ GAME ══════════════════ -->
-
 <div id="screen-game" class="screen">
   <!-- Fixed header -->
   <div class="game-header">
@@ -1286,107 +1359,105 @@ input:focus { border-color:var(--green); }
 
   <div class="game-body">
 
-```
-<!-- Giver badge (always shown) -->
-<div class="giver-badge" style="max-width:440px;width:100%;margin-bottom:4px;">
-  <div class="gb-main" id="g-giver">—</div>
-  <div class="gb-sub" id="g-team">—</div>
-</div>
-
-<!-- PANEL: Round Intro -->
-<div class="game-panel" id="panel-intro">
-  <div class="intro-card">
-    <div class="round-badge-pill" id="pi-round">Round 1 of 3</div>
-    <div class="round-icon" id="pi-icon">💬</div>
-    <h2 id="pi-name">Describe It</h2>
-    <div class="round-rule" id="pi-rule">Say anything except the word itself.</div>
-    <div style="margin-top:10px;font-size:.85rem;color:var(--gray);">
-      🥗 <span id="pi-bowl">—</span> words in the bowl
+    <!-- Giver badge (always shown) -->
+    <div class="giver-badge" style="max-width:440px;width:100%;margin-bottom:4px;">
+      <div class="gb-main" id="g-giver">—</div>
+      <div class="gb-sub" id="g-team">—</div>
     </div>
-    <div id="pi-scores" style="display:none;margin-top:12px;">
-      <p class="label" style="margin-bottom:6px;">Current scores</p>
-      <table class="score-table light" style="background:var(--paper);border-radius:8px;overflow:hidden;">
-        <tbody id="pi-score-body"></tbody>
-      </table>
+
+    <!-- PANEL: Round Intro -->
+    <div class="game-panel" id="panel-intro">
+      <div class="intro-card">
+        <div class="round-badge-pill" id="pi-round">Round 1 of 3</div>
+        <div class="round-icon" id="pi-icon">💬</div>
+        <h2 id="pi-name">Describe It</h2>
+        <div class="round-rule" id="pi-rule">Say anything except the word itself.</div>
+        <div style="margin-top:10px;font-size:.85rem;color:var(--gray);">
+          🥗 <span id="pi-bowl">—</span> words in the bowl
+        </div>
+        <div id="pi-scores" style="display:none;margin-top:12px;">
+          <p class="label" style="margin-bottom:6px;">Current scores</p>
+          <table class="score-table light" style="background:var(--paper);border-radius:8px;overflow:hidden;">
+            <tbody id="pi-score-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="font-size:.82rem;color:rgba(255,255,255,.4);text-align:center;">
+        <span id="pi-giver" style="color:rgba(255,255,255,.7);font-weight:600;"></span>
+        <span> · </span><span id="pi-team"></span>
+      </div>
+      <button class="btn btn-gold" id="pi-start-btn">Start Turn →</button>
     </div>
-  </div>
-  <div style="font-size:.82rem;color:rgba(255,255,255,.4);text-align:center;">
-    <span id="pi-giver" style="color:rgba(255,255,255,.7);font-weight:600;"></span>
-    <span> · </span><span id="pi-team"></span>
-  </div>
-  <button class="btn btn-gold" id="pi-start-btn">Start Turn →</button>
-</div>
 
-<!-- PANEL: Playing -->
-<div class="game-panel" id="panel-playing">
-  <div class="timer-ring" id="pp-timer-ring">
-    <svg width="100" height="100">
-      <circle class="bg" cx="50" cy="50" r="44"/>
-      <circle class="fg" id="pp-timer-circle" cx="50" cy="50" r="44"
-        stroke-dasharray="276.5" stroke-dashoffset="0"/>
-    </svg>
-    <div class="timer-num" id="pp-timer-num">60</div>
-  </div>
+    <!-- PANEL: Playing -->
+    <div class="game-panel" id="panel-playing">
+      <div class="timer-ring" id="pp-timer-ring">
+        <svg width="100" height="100">
+          <circle class="bg" cx="50" cy="50" r="44"/>
+          <circle class="fg" id="pp-timer-circle" cx="50" cy="50" r="44"
+            stroke-dasharray="276.5" stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-num" id="pp-timer-num">60</div>
+      </div>
 
-  <div class="word-card" id="pp-word-card">
-    <p class="wc-hint" id="pp-giver-label">Your word:</p>
-    <p class="wc-word" id="pp-word">—</p>
-    <p class="wc-left" id="pp-bowl">— words left</p>
-  </div>
+      <div class="word-card" id="pp-word-card">
+        <p class="wc-hint" id="pp-giver-label">Your word:</p>
+        <p class="wc-word" id="pp-word">—</p>
+        <p class="wc-left" id="pp-bowl">— words left</p>
+      </div>
 
-  <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
-    <button class="btn btn-gold" id="pp-got" onclick="gotIt()">✓ Got it!</button>
-    <button class="btn btn-secondary" id="pp-skip"
-      style="color:white;border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.05);"
-      onclick="skipWord()">↷ Skip</button>
-  </div>
+      <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
+        <button class="btn btn-gold" id="pp-got" onclick="gotIt()">✓ Got it!</button>
+        <button class="btn btn-secondary" id="pp-skip"
+          style="color:white;border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.05);"
+          onclick="skipWord()">↷ Skip</button>
+      </div>
 
-  <div class="watching-card" style="display:none;" id="pp-watching">
-    <div class="watching-big">👀</div>
-    <div id="pp-watching-text">Watching…</div>
-  </div>
-</div>
+      <div class="watching-card" style="display:none;" id="pp-watching">
+        <div class="watching-big">👀</div>
+        <div id="pp-watching-text">Watching…</div>
+      </div>
+    </div>
 
-<!-- PANEL: Turn End -->
-<div class="game-panel" id="panel-turn-end">
-  <div class="turn-end-card">
-    <p class="label">Turn Over</p>
-    <h2 style="margin-top:4px;" id="pte-heading">—</h2>
-    <p class="dimmed mt-8" style="font-size:.82rem;" id="pte-subtext">Toggle any words that need adjusting, then confirm.</p>
-    <div class="word-result-list mt-8" id="pte-word-list"></div>
-  </div>
-  <button class="btn btn-primary" id="pte-confirm-btn">Confirm →</button>
-</div>
+    <!-- PANEL: Turn End -->
+    <div class="game-panel" id="panel-turn-end">
+      <div class="turn-end-card">
+        <p class="label">Turn Over</p>
+        <h2 style="margin-top:4px;" id="pte-heading">—</h2>
+        <p class="dimmed mt-8" style="font-size:.82rem;" id="pte-subtext">Toggle any words that need adjusting, then confirm.</p>
+        <div class="word-result-list mt-8" id="pte-word-list"></div>
+      </div>
+      <button class="btn btn-primary" id="pte-confirm-btn">Confirm →</button>
+    </div>
 
-<!-- PANEL: Between Rounds -->
-<div class="game-panel" id="panel-between">
-  <div class="between-card gap-12">
-    <h2 id="pb-heading" class="text-center">Round Done!</h2>
-    <table class="score-table light">
-      <thead><tr><th>Team</th><th>R1</th><th>R2</th><th>R3</th><th>Total</th></tr></thead>
-      <tbody id="pb-score-body"></tbody>
-    </table>
-    <p class="dimmed text-center" style="font-size:.82rem;">🥗 All words go back in the bowl for the next round.</p>
-  </div>
-  <button class="btn btn-primary" id="pb-next-btn">Next Round →</button>
-</div>
+    <!-- PANEL: Between Rounds -->
+    <div class="game-panel" id="panel-between">
+      <div class="between-card gap-12">
+        <h2 id="pb-heading" class="text-center">Round Done!</h2>
+        <table class="score-table light">
+          <thead><tr><th>Team</th><th>R1</th><th>R2</th><th>R3</th><th>Total</th></tr></thead>
+          <tbody id="pb-score-body"></tbody>
+        </table>
+        <p class="dimmed text-center" style="font-size:.82rem;">🥗 All words go back in the bowl for the next round.</p>
+      </div>
+      <button class="btn btn-primary" id="pb-next-btn">Next Round →</button>
+    </div>
 
-<!-- PANEL: Done -->
-<div class="game-panel" id="panel-done">
-  <div class="winner-blob">
-    <div class="trophy">🏆</div>
-    <h2 id="pd-winner">Team A Wins!</h2>
-    <p style="margin-top:4px;opacity:.8;" id="pd-score-line"></p>
-  </div>
-  <div class="done-card">
-    <table class="score-table light">
-      <thead><tr><th>Team</th><th>R1</th><th>R2</th><th>R3</th><th>Total</th></tr></thead>
-      <tbody id="pd-score-body"></tbody>
-    </table>
-  </div>
-  <button class="btn btn-danger" onclick="newGame()">🥗 New Game</button>
-</div>
-```
+    <!-- PANEL: Done -->
+    <div class="game-panel" id="panel-done">
+      <div class="winner-blob">
+        <div class="trophy">🏆</div>
+        <h2 id="pd-winner">Team A Wins!</h2>
+        <p style="margin-top:4px;opacity:.8;" id="pd-score-line"></p>
+      </div>
+      <div class="done-card">
+        <table class="score-table light">
+          <thead><tr><th>Team</th><th>R1</th><th>R2</th><th>R3</th><th>Total</th></tr></thead>
+          <tbody id="pd-score-body"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-danger" onclick="newGame()">🥗 New Game</button>
+    </div>
 
   </div><!-- /game-body -->
 </div>
