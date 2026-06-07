@@ -124,6 +124,7 @@ window.showHome = function() {
   stopListening();
   clearInterval(L.timerInterval);
   clearSession();
+  _gameStartTriggered = false;
   L = { roomCode:null, playerId:null, playerName:null, unsubscribers:[], timerInterval:null, timerSecs:60, lastWordCount:null };
   goTo('screen-home');
 }
@@ -349,6 +350,7 @@ window.startGame = async function() {
 // ═══════════════════════════════════════════════════
 function enterWordSubmission(wordsPerPerson) {
   stopListening();
+  saveSession();
   goTo('screen-words');
   $('words-count-label').textContent = wordsPerPerson;
 
@@ -363,15 +365,60 @@ function enterWordSubmission(wordsPerPerson) {
   }
   setTimeout(() => { const f = $('w-0'); if(f) f.focus(); }, 200);
 
-  // listen for game start (all words submitted)
-  listen('game/phase', phase => {
-    if (phase === 'playing') { stopListening(); enterGame(); }
-  });
+  // Listen for the room phase changing to 'playing' (game started)
   listen('phase', ph => {
     if (ph === 'playing') { stopListening(); enterGame(); }
   });
 
+  // Also listen for all players submitting — any device can trigger game start
+  listen('players', async (players) => {
+    if (!players) return;
+    const allDone = Object.values(players).every(p => p.wordsSubmitted);
+    const submitted = Object.values(players).filter(p => p.wordsSubmitted).length;
+    const total = Object.keys(players).length;
+
+    // Update status text if we've already submitted
+    if ($('submit-words-btn').disabled) {
+      $('submit-words-btn').innerHTML = `<span class="spinner"></span> ${submitted}/${total} submitted…`;
+    }
+
+    if (allDone) {
+      // Any device that sees allDone triggers the game start
+      await triggerGameStart();
+    }
+  });
+
   $('submit-words-btn').onclick = () => submitWords(wordsPerPerson);
+}
+
+let _gameStartTriggered = false;
+async function triggerGameStart() {
+  if (_gameStartTriggered) return;
+  _gameStartTriggered = true;
+
+  try {
+    // Check if game already started (another device beat us to it)
+    const roomSnap = await get(roomRef());
+    if (roomSnap.val()?.phase === 'playing') return;
+
+    const wSnap = await get(roomRef('words'));
+    const rawWords = wSnap.val() || {};
+    const allWords = Object.values(rawWords).map(w => {
+      try { return JSON.parse(w).text; } catch(e) { return w; }
+    });
+    const bowl = shuffle(allWords);
+
+    await update(roomRef('game'), {
+      bowl,
+      bowlLeft: bowl,
+      phase: 'round_intro',
+      round: 0,
+    });
+    await update(roomRef(), { phase: 'playing' });
+  } catch(e) {
+    console.error('triggerGameStart error:', e);
+    _gameStartTriggered = false; // allow retry
+  }
 }
 
 async function submitWords(wordsPerPerson) {
@@ -385,47 +432,31 @@ async function submitWords(wordsPerPerson) {
   $('submit-words-btn').disabled = true;
   $('submit-words-btn').innerHTML = '<span class="spinner"></span> Waiting for others…';
 
-  // store words under player
-  await update(ref(db, `rooms/${L.roomCode}/players/${L.playerId}`), { wordsSubmitted: true });
-  const wordObj = {};
-  words.forEach((w,i) => { wordObj[`${L.playerId}_${i}`] = JSON.stringify({ text: w, author: L.playerId }); });
-  await update(ref(db, `rooms/${L.roomCode}/words`), wordObj);
+  try {
+    // Store words
+    const wordObj = {};
+    words.forEach((w,i) => { wordObj[`${L.playerId}_${i}`] = JSON.stringify({ text: w, author: L.playerId }); });
+    await update(ref(db, `rooms/${L.roomCode}/words`), wordObj);
 
-  // check if everyone submitted — any player can trigger this
-  const snap = await get(roomRef('players'));
-  const players = snap.val() || {};
-  const allDone = Object.values(players).every(p => p.wordsSubmitted);
+    // Mark this player as done
+    await update(ref(db, `rooms/${L.roomCode}/players/${L.playerId}`), { wordsSubmitted: true });
 
-  if (allDone) {
-    // build bowl and start game
-    const wSnap = await get(roomRef('words'));
-    const rawWords = wSnap.val() || {};
-    // Parse words — support both old format (plain string) and new format (JSON with author)
-    const wordEntries = Object.values(rawWords).map(w => {
-      try { const p = JSON.parse(w); return { text: p.text, author: p.author }; }
-      catch(e) { return { text: w, author: null }; }
-    });
-    const allWords = wordEntries.map(w => w.text);
-    const bowl = shuffle(allWords);
-    // Store word-author mapping for smart bowl (round 1)
-    const wordAuthors = {};
-    wordEntries.forEach(w => { wordAuthors[w.text] = w.author; });
-
-    await update(roomRef('game'), {
-      bowl,
-      bowlLeft: bowl,
-      phase: 'round_intro',
-      round: 0,
-      wordAuthors,
-    });
-    await update(roomRef(), { phase: 'playing' });
+    // The players listener above will detect allDone and trigger game start
+  } catch(e) {
+    console.error('submitWords error:', e);
+    alert('Error submitting words. Try again.');
+    $('submit-words-btn').disabled = false;
+    $('submit-words-btn').textContent = 'Submit Words →';
   }
 }
+
+
 
 // ═══════════════════════════════════════════════════
 //  GAME — MAIN LISTENER
 // ═══════════════════════════════════════════════════
 function enterGame() {
+  saveSession();  // persist so tab close/app switch can rejoin
   goTo('screen-game');
   listenGame();
 }
@@ -646,10 +677,21 @@ window.startTurn = async function() {
 
   // Round 1 smart bowl: put other people's words first, own words at the end
   let bowlLeft = [...(game.bowlLeft || [])];
-  if ((game.round || 0) === 0 && game.wordAuthors) {
-    const others = bowlLeft.filter(w => game.wordAuthors[w] !== L.playerId);
-    const mine = bowlLeft.filter(w => game.wordAuthors[w] === L.playerId);
-    bowlLeft = [...shuffle(others), ...shuffle(mine)];
+  if ((game.round || 0) === 0) {
+    try {
+      const wSnap = await get(roomRef('words'));
+      const rawWords = wSnap.val() || {};
+      // Build a set of this player's words
+      const myWords = new Set();
+      Object.entries(rawWords).forEach(([key, val]) => {
+        if (key.startsWith(L.playerId + '_')) {
+          try { myWords.add(JSON.parse(val).text); } catch(e) { myWords.add(val); }
+        }
+      });
+      const others = bowlLeft.filter(w => !myWords.has(w));
+      const mine = bowlLeft.filter(w => myWords.has(w));
+      bowlLeft = [...shuffle(others), ...shuffle(mine)];
+    } catch(e) { /* if this fails, just use the regular bowl */ }
   }
 
   await update(roomRef('game'), {
@@ -957,6 +999,9 @@ window.copyLink = async function() {
               enterWordSubmission(room.settings?.wordsPerPerson || 5);
             }
           } else if (room.phase === 'playing' || room.phase === 'done') {
+            enterGame();
+          } else {
+            // Unknown phase — try entering game anyway
             enterGame();
           }
           return; // skip normal home screen
